@@ -1,5 +1,9 @@
 {
   "name": "hardhat-project",
+  "scripts": {
+    "deploy-market-test": "node scripts/deploy-marketplace.js test",
+    "deploy-market": "node scripts/deploy-marketplace.js mainnet"
+  },
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.5",
     "@nomiclabs/hardhat-waffle": "^2.0.3",
@@ -8,5 +12,8 @@
     "ethereum-waffle": "^3.4.0",
     "ethers": "^5.5.4",
     "hardhat": "^2.9.1"
+  },
+  "dependencies": {
+    "minimist": "^1.2.6"
   }
 }

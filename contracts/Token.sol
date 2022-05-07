@@ -4,6 +4,9 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
+//SOLU - 0xCB5df23bfe0367f340Ce6dfa84e6Db949D5Fb4F5
+//NFT - 0x444C43d656B72C26ba7898aAB84C6dCB429CAe11
+
 contract YourToken is ERC20 {
     constructor() ERC20("Solu", "SOLU") {
         _mint(msg.sender, 1000 * 10 ** 18);

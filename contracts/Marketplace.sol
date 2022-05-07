@@ -5,15 +5,12 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "./SafeERC20B.sol";
 
-//SOLU - 0xCB5df23bfe0367f340Ce6dfa84e6Db949D5Fb4F5
-//NFT - 0x444C43d656B72C26ba7898aAB84C6dCB429CAe11
-
-contract RosieMagicMarket is Ownable, ReentrancyGuard {
-    using SafeERC20 for IERC20;
+contract Turtlesea is Ownable, ReentrancyGuard {
+    using SafeERC20B for IERC20B;
 
     bytes4 private constant INTERFACE_ID_ERC721 = 0x80ac58cd;
     bytes4 private constant INTERFACE_ID_ERC1155 = 0xd9b67a26;
@@ -24,10 +21,13 @@ contract RosieMagicMarket is Ownable, ReentrancyGuard {
     uint256 public fee;
     address public feeReceipient;
 
+    bool public marketActive;
+
     struct Listing {
         uint256 quantity;
         uint256 pricePerItem;
         uint256 expirationDate;
+        uint256 blockNumber;
     }
 
     //  _collectionAddress => _tokenId => _owner
@@ -96,8 +96,6 @@ contract RosieMagicMarket is Ownable, ReentrancyGuard {
     }
 
     constructor() {
-        setFee(750);
-        setFeeRecipient(0x693065F2e132E9A8B70AA4D43120EAef7f8f2685);
         setPaymentToken(0xCB5df23bfe0367f340Ce6dfa84e6Db949D5Fb4F5); 
     }
 
@@ -107,7 +105,8 @@ contract RosieMagicMarket is Ownable, ReentrancyGuard {
         uint256 _quantity,
         uint256 _pricePerItem,
         uint256 _expirationDate
-    ) external {
+    ) external onlyOwner {
+        require(marketActive, "Market is not live");
         require(listings[_collectionAddress][_tokenId][_msgSender()].quantity == 0, "already listed");
         if (_expirationDate == 0) _expirationDate = type(uint256).max;
         require(_expirationDate > block.timestamp, "invalid expiration time");
@@ -116,6 +115,7 @@ contract RosieMagicMarket is Ownable, ReentrancyGuard {
         if (IERC165(_collectionAddress).supportsInterface(INTERFACE_ID_ERC721)) {
             IERC721 nft = IERC721(_collectionAddress);
             require(nft.ownerOf(_tokenId) == _msgSender(), "not owning item");
+            require(_quantity == 1, "ERC721 is not fungible");
             require(nft.isApprovedForAll(_msgSender(), address(this)), "item not approved");
         } else if (IERC165(_collectionAddress).supportsInterface(INTERFACE_ID_ERC1155)) {
             IERC1155 nft = IERC1155(_collectionAddress);
@@ -128,7 +128,8 @@ contract RosieMagicMarket is Ownable, ReentrancyGuard {
         listings[_collectionAddress][_tokenId][_msgSender()] = Listing(
             _quantity,
             _pricePerItem,
-            _expirationDate
+            _expirationDate,
+            block.number
         );
 
         emit ItemListed(
@@ -166,6 +167,7 @@ contract RosieMagicMarket is Ownable, ReentrancyGuard {
         listedItem.quantity = _newQuantity;
         listedItem.pricePerItem = _newPricePerItem;
         listedItem.expirationDate = _newExpirationDate;
+        listedItem.blockNumber = block.number;
 
         emit ItemUpdated(
             _msgSender(),
@@ -216,11 +218,13 @@ contract RosieMagicMarket is Ownable, ReentrancyGuard {
         isListed(_collectionAddress, _tokenId, _owner)
         validListing(_collectionAddress, _tokenId, _owner)
     {
+        require(marketActive, "Market is not live");
         require(_quantity > 0, "Cannot buy 0");
         require(_msgSender() != _owner, "Cannot buy your own item");
 
         Listing memory listedItem = listings[_collectionAddress][_tokenId][_owner];
         require(listedItem.quantity >= _quantity, "not enough quantity");
+        require(listedItem.blockNumber < block.number, "Cannot buy in same block the listing is set");
 
         // Transfer NFT to buyer
         if (IERC165(_collectionAddress).supportsInterface(INTERFACE_ID_ERC721)) {
@@ -245,31 +249,21 @@ contract RosieMagicMarket is Ownable, ReentrancyGuard {
         );
 
         //BytPriceDictionary(transactionDictionary).reportSale(_collectionAddress, _tokenId, paymentToken, listedItem.pricePerItem);
-        _buyItem(listedItem.pricePerItem, _quantity, _owner);
+        _buyItem(listedItem.pricePerItem, _quantity);
     }
 
     function _buyItem(
         uint256 _pricePerItem,
-        uint256 _quantity,
-        address _owner
+        uint256 _quantity
     ) internal {
         uint256 totalPrice = _pricePerItem * _quantity;
-        uint256 feeAmount = totalPrice * fee / BASIS_POINTS;
-        IERC20(paymentToken).safeTransferFrom(_msgSender(), feeReceipient, feeAmount);
-        IERC20(paymentToken).safeTransferFrom(_msgSender(), _owner, totalPrice - feeAmount);
+        IERC20B(paymentToken).safeBurnFrom(_msgSender(), totalPrice);
     }
 
-    // admin
+    // Admin Functions
 
-    function setFee(uint256 _fee) public onlyOwner {
-        require(_fee < BASIS_POINTS, "max fee");
-        fee = _fee;
-        emit UpdateFee(_fee);
-    }
-
-    function setFeeRecipient(address _feeRecipient) public onlyOwner {
-        feeReceipient = _feeRecipient;
-        emit UpdateFeeRecipient(_feeRecipient);
+    function setMarketActive() external onlyOwner {
+        marketActive = !marketActive;
     }
 
     function setPaymentToken(address _paymentToken) public onlyOwner {
